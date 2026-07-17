@@ -25,8 +25,11 @@ const td = {
 }
 const left = { textAlign: 'left' }
 
+const susColor = { high: T.red, elevated: T.amber, normal: T.faint }
+
 export default function UniverseTable({ ranked, isSnapshot, selectedId, onSelect, momKey, recentLabel }) {
   if (ranked.length === 0) return null
+  const hasSus = ranked.some((a) => a.sus)
   return (
     <section style={{ ...S.panel, ...S.fadeIn, padding: 16, marginBottom: 16 }}>
       <h2 style={{ ...S.h2, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -49,6 +52,7 @@ export default function UniverseTable({ ranked, isSnapshot, selectedId, onSelect
               <th style={th}>β</th>
               {isSnapshot && <th style={th}>as-of</th>}
               <th style={th}>Z</th>
+              {hasSus && <th style={th} title="Suspicion score: statistical unusualness vs this universe. Unusual ≠ illegal.">sus</th>}
             </tr>
           </thead>
           <tbody>
@@ -82,6 +86,11 @@ export default function UniverseTable({ ranked, isSnapshot, selectedId, onSelect
                   <td style={td}>{fmtNum(a.prim.beta, 2)}</td>
                   {isSnapshot && <td style={{ ...td, color: T.faint, fontSize: 11 }}>{a.asOf || '—'}</td>}
                   <td style={{ ...td, color: a.composite >= 0 ? T.teal : T.crimson, fontWeight: 600 }}>{fmtNum(a.composite, 2)}</td>
+                  {hasSus && (
+                    <td style={{ ...td, color: susColor[a.sus?.level] || T.faint }} title={a.sus ? `suspicion ${a.sus.level} (${fmtNum(a.sus.score, 2)})` : ''}>
+                      {a.sus ? `● ${fmtNum(a.sus.score, 1)}` : '—'}
+                    </td>
+                  )}
                 </tr>
               )
             })}

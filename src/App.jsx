@@ -12,6 +12,8 @@ import {
 } from './lib/factors.js'
 import { loadSettings, saveSetting, clearSettings } from './lib/storage.js'
 import { createBot, rebalance, recordTick, needsRebalance, MIN_AUTO_REBALANCE_MS } from './lib/paperbot.js'
+import { cryptoSusRaw, equitySusRaw, computeSusScores } from './lib/sus.js'
+import { loadInsiderCounts, loadPoliticianFeed } from './lib/susLoaders.js'
 
 import Header from './components/Header.jsx'
 import QuadrantSelector from './components/QuadrantSelector.jsx'
@@ -25,6 +27,8 @@ import CorrMatrix from './components/CorrMatrix.jsx'
 import Methodology from './components/Methodology.jsx'
 import ErrorCard from './components/ErrorCard.jsx'
 import PaperBot from './components/PaperBot.jsx'
+import SusPanel from './components/SusPanel.jsx'
+import WhaleTicker from './components/WhaleTicker.jsx'
 
 const REFRESH_SECONDS = 60
 const saved = loadSettings()
@@ -178,6 +182,8 @@ export default function App() {
     setGhUrl('')
     setSymbolsText('NVDA, QQQ, AAPL, MSFT, GOOGL, AMZN, TSLA, META')
     setStockModeRaw('relay')
+    setPolFeedUrl('')
+    setPolFeed({ status: 'idle', bySymbol: null, recent: [] })
   }
 
   // ---- build the current universe -----------------------------------------
@@ -195,6 +201,7 @@ export default function App() {
         price: c.current_price,
         recentPct: Number.isFinite(c.price_change_percentage_24h_in_currency) ? c.price_change_percentage_24h_in_currency : null,
         prim: cryptoPrimitives(c, btcReturns),
+        susRaw: cryptoSusRaw(c),
       }))
     }
     if (isSnapshot) {
@@ -222,6 +229,7 @@ export default function App() {
         price: r.closes[r.closes.length - 1],
         recentPct: prim.r1w,
         prim,
+        susRaw: equitySusRaw(r),
       }
     })
   }, [assetClass, crypto.coins, isSnapshot, equity.status, equity.rows])
@@ -230,6 +238,51 @@ export default function App() {
     () => rankAssets(assets, weights, { volSign: preset.volSign, momKey: preset.momKey }),
     [assets, weights, preset.volSign, preset.momKey],
   )
+
+  // ---- suspicion radar overlays ---------------------------------------------
+  const [insider, setInsider] = useState({ status: 'idle', bySymbol: null })
+  const [polFeedUrl, setPolFeedUrl] = useState(saved.polFeedUrl || '')
+  const [polFeed, setPolFeed] = useState({ status: 'idle', bySymbol: null, recent: [] })
+  const susLog = useCallback((line) => setRelayLog((l) => [...l, line]), [])
+
+  // Insider filing intensity (SEC EDGAR Form 4 counts) once equities load.
+  useEffect(() => {
+    if (assetClass !== 'stocks' || isSnapshot || equity.status !== 'ready') return undefined
+    const ctrl = new AbortController()
+    setInsider({ status: 'loading', bySymbol: null })
+    loadInsiderCounts(equity.rows.map((r) => r.symbol), { signal: ctrl.signal, onLog: susLog })
+      .then((res) => {
+        if (ctrl.signal.aborted) return
+        const ok = Object.keys(res.bySymbol).length > 0
+        setInsider({ status: ok ? 'ready' : 'error', bySymbol: ok ? res.bySymbol : null })
+        if (!ok) susLog('EDGAR Form 4: every symbol failed — insider signal excluded from scores')
+      })
+      .catch((e) => {
+        if (e?.name !== 'AbortError') setInsider({ status: 'error', bySymbol: null })
+      })
+    return () => ctrl.abort()
+  }, [assetClass, isSnapshot, equity.status, equity.rows, susLog])
+
+  const loadPolFeedNow = async () => {
+    setPolFeed({ status: 'loading', bySymbol: null, recent: [] })
+    try {
+      const feed = await loadPoliticianFeed(polFeedUrl, { onLog: susLog })
+      setPolFeed({ status: 'ready', bySymbol: feed.bySymbol, recent: feed.recent })
+    } catch (e) {
+      if (e?.name !== 'AbortError') setPolFeed({ status: 'error', bySymbol: null, recent: [] })
+    }
+  }
+
+  const susMap = useMemo(() => {
+    if (isSnapshot) return {}
+    const withRaw = assets.filter((a) => a.susRaw)
+    const overlays = {}
+    if (assetClass === 'stocks') {
+      if (insider.bySymbol) overlays.insider = insider.bySymbol
+      if (polFeed.bySymbol) overlays.politician = polFeed.bySymbol
+    }
+    return computeSusScores(withRaw, assetClass, overlays)
+  }, [assets, assetClass, isSnapshot, insider.bySymbol, polFeed.bySymbol])
 
   // ---- paper trading bot (simulated money, one per quadrant) ----------------
   const [bots, setBots] = useState(saved.paperbot || {})
@@ -291,6 +344,24 @@ export default function App() {
 
   const recentLabel = assetClass === 'crypto' ? '24h %' : '1w %'
   const showGbm = selected && !isSnapshot && selected.prim.returns
+
+  const rankedWithSus = useMemo(
+    () => ranked.map((a) => (susMap[a.symbol] ? { ...a, sus: susMap[a.symbol] } : a)),
+    [ranked, susMap],
+  )
+  const susRanked = useMemo(
+    () => rankedWithSus.filter((a) => a.sus).slice().sort((x, y) => y.sus.score - x.sus.score),
+    [rankedWithSus],
+  )
+  const overlayStatus =
+    assetClass === 'stocks'
+      ? [
+          { key: 'edgar', label: `EDGAR Form 4: ${insider.status === 'ready' ? 'live' : insider.status}`, ok: insider.status === 'ready', detail: 'SEC insider-transaction filing counts per ticker, last 30 days (efts.sec.gov full-text search)' },
+          { key: 'pol', label: `lawmaker feed: ${polFeed.status === 'ready' ? 'live' : polFeed.status === 'idle' ? 'not set' : polFeed.status}`, ok: polFeed.status === 'ready', detail: 'STOCK Act trade disclosures from a user-supplied feed — public mirrors (Senate/House Stock Watcher) are dead' },
+        ]
+      : [
+          { key: 'computed', label: 'computed anomalies: live', ok: true, detail: 'turnover, price–volume divergence, volatility regime spike, pump extremity — from the CoinGecko data already loaded' },
+        ]
 
   return (
     <div style={{ minHeight: '100vh', background: T.bg, fontFamily: FONTS.sans, color: T.ink }}>
@@ -394,8 +465,21 @@ export default function App() {
           />
         )}
 
+        {!isSnapshot && susRanked.length > 0 && (
+          <SusPanel
+            susRanked={susRanked}
+            assetClass={assetClass}
+            overlayStatus={overlayStatus}
+            polFeedUrl={polFeedUrl}
+            onPolFeedUrl={persist('polFeedUrl', setPolFeedUrl)}
+            onLoadPolFeed={loadPolFeedNow}
+            polTrades={polFeed.recent}
+          />
+        )}
+        {assetClass === 'crypto' && crypto.coins.length > 0 && <WhaleTicker btcUsd={priceMap.BTC || 0} />}
+
         <UniverseTable
-          ranked={ranked}
+          ranked={rankedWithSus}
           isSnapshot={isSnapshot}
           selectedId={selected?.id}
           onSelect={setSelectedId}

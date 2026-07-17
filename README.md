@@ -84,6 +84,34 @@ and its results still flatter reality (no slippage, no spreads, instant
 fills). One independent bot per quadrant, persisted in localStorage; disabled
 in snapshot mode because static prices can't be traded meaningfully.
 
+## Suspicion radar
+
+An anomaly detector over public data, with a strict honesty contract:
+**unusual ≠ illegal ≠ insider** — flags are descriptive, never accusations,
+and a quiet asset is not certified clean.
+
+- **Tier 1 (always on, computed)** — z-scored within the current universe from
+  data already loaded, so it works for crypto, stocks, and bond/commodity ETFs
+  alike: turnover anomaly, price–volume divergence (heavy volume + flat
+  price), volatility regime spikes (crypto), volume surge vs ~1y baseline and
+  single-day move spikes (equities).
+- **Tier 2 (optional overlays, loudly failing)** —
+  - *Insider filing intensity*: SEC EDGAR full-text counts of Form 4 filings
+    mentioning each ticker over the last 30 days (filings are legal and
+    routine; the count is a pulse, not an allegation).
+  - *On-chain whale flow*: live ticker of BTC transfers ≥ 5 BTC entering the
+    mempool (blockchain.info → mempool.space fallback, both key-less and
+    CORS-open). Large transfers are routine; the card says so.
+  - *Lawmaker trades*: the public Senate/House Stock Watcher mirrors are dead
+    (verified — S3 AccessDenied), so this overlay takes a user-supplied STOCK
+    Act feed via the raw-GitHub pattern; see
+    [`public/sus-feed/`](public/sus-feed/README.md). A missing feed
+    contributes nothing — absence of data is never treated as evidence.
+
+Scores bucket into normal / elevated / high, shown in a radar panel with
+per-signal chips and as a `sus` column in the universe table. Hidden in
+snapshot mode (no series to analyze).
+
 ## Persistence
 
 API key, symbols, custom relay, GitHub feed URL, equity mode and per-quadrant

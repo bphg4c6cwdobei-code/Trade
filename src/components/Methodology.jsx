@@ -24,6 +24,10 @@ const CARDS = [
     body: 'Volatility is the sample standard deviation of log returns, annualized. Trend is an OLS slope of log-price scaled by R² — a linear-algebra projection onto a line, rewarding smooth persistent drift. Beta is a covariance ratio vs the benchmark (BTC or SPY). The GBM fan integrates dS = μS·dt + σS·dW with Box–Muller normals. For the theory behind these estimators, see Durrett\'s "Probability: Theory and Examples", Linde\'s "Probability Theory", and Heil\'s "Introduction to Real Analysis"; the regression and z-score machinery is standard linear algebra (least squares as orthogonal projection).',
   },
   {
+    title: 'Suspicion radar — what it can and cannot say',
+    body: 'The radar z-scores statistical anomalies within the current universe: turnover without price movement, volume surges vs a 1y baseline, volatility regime breaks, single-day move spikes. Optional overlays add SEC Form 4 insider-filing counts (EDGAR full-text — filings are legal and routine) and publicly disclosed STOCK Act lawmaker trades from a user-supplied feed (the once-popular Senate/House Stock Watcher mirrors are dead; we refuse to fake them). Unusual ≠ illegal ≠ insider. These are descriptive flags on public data, never accusations — and a quiet asset is not certified clean.',
+  },
+  {
     title: 'Honesty constraints',
     body: 'This tool ranks RECENT statistical behavior. It is descriptive, not predictive: no price targets, no buy/sell language, no forecasts. Missing data is shown as "—" and contributes neutrally instead of being invented. Snapshot mode is labeled indicative. Real return distributions have fatter tails than every model here assumes.',
   },
