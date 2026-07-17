@@ -11,6 +11,7 @@ import {
   cryptoPrimitives, equityPrimitives, stockSnapPrimitives,
 } from './lib/factors.js'
 import { loadSettings, saveSetting, clearSettings } from './lib/storage.js'
+import { createBot, rebalance, recordTick, needsRebalance, MIN_AUTO_REBALANCE_MS } from './lib/paperbot.js'
 
 import Header from './components/Header.jsx'
 import QuadrantSelector from './components/QuadrantSelector.jsx'
@@ -23,6 +24,7 @@ import UniverseTable from './components/UniverseTable.jsx'
 import CorrMatrix from './components/CorrMatrix.jsx'
 import Methodology from './components/Methodology.jsx'
 import ErrorCard from './components/ErrorCard.jsx'
+import PaperBot from './components/PaperBot.jsx'
 
 const REFRESH_SECONDS = 60
 const saved = loadSettings()
@@ -169,6 +171,7 @@ export default function App() {
 
   const handleClearSettings = () => {
     clearSettings()
+    setBots({})
     setWeightOverrides({})
     setApiKey('')
     setCustomProxy('')
@@ -227,6 +230,57 @@ export default function App() {
     () => rankAssets(assets, weights, { volSign: preset.volSign, momKey: preset.momKey }),
     [assets, weights, preset.volSign, preset.momKey],
   )
+
+  // ---- paper trading bot (simulated money, one per quadrant) ----------------
+  const [bots, setBots] = useState(saved.paperbot || {})
+  const bot = bots[qk] || null
+  const priceMap = useMemo(() => {
+    const m = {}
+    for (const a of ranked) if (Number.isFinite(a.price) && a.price > 0) m[a.symbol] = a.price
+    return m
+  }, [ranked])
+  const topSymbols = useMemo(() => ranked.slice(0, 5).map((a) => a.symbol), [ranked])
+
+  const updateBot = useCallback((key, next) => {
+    setBots((prev) => {
+      const all = { ...prev }
+      if (next == null) delete all[key]
+      else all[key] = next
+      saveSetting('paperbot', all)
+      return all
+    })
+  }, [])
+
+  const startBot = () => {
+    if (ranked.length === 0) return
+    const now = Date.now()
+    const benchSym = assetClass === 'crypto' ? 'BTC' : 'SPY'
+    let b = createBot(now, benchSym, priceMap[benchSym])
+    b = rebalance(b, topSymbols, priceMap, now)
+    updateBot(qk, recordTick(b, priceMap, now))
+  }
+  const toggleBot = () => bot && updateBot(qk, { ...structuredClone(bot), running: !bot.running })
+  const resetBot = () => updateBot(qk, null)
+  const rebalanceBotNow = () => {
+    if (!bot || !bot.running || ranked.length === 0) return
+    const now = Date.now()
+    updateBot(qk, recordTick(rebalance(bot, topSymbols, priceMap, now), priceMap, now))
+  }
+
+  // Auto tick + rebalance whenever fresh prices/rankings arrive.
+  useEffect(() => {
+    const b = bots[qk]
+    if (!b || !b.running || ranked.length === 0 || Object.keys(priceMap).length === 0) return
+    const now = Date.now()
+    let next = b
+    const canRebalance = b.lastRebalance == null || now - b.lastRebalance >= MIN_AUTO_REBALANCE_MS
+    if (canRebalance && needsRebalance(b, topSymbols.filter((s) => priceMap[s]))) {
+      next = rebalance(next, topSymbols, priceMap, now)
+    }
+    next = recordTick(next, priceMap, now)
+    updateBot(qk, next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceMap]) // one pass per fresh price map; rankings ride along
 
   // ---- selection ------------------------------------------------------------
   const [selectedId, setSelectedId] = useState(null)
@@ -327,6 +381,18 @@ export default function App() {
         />
 
         {showGbm && <ProjectionChart asset={selected} />}
+
+        {!isSnapshot && ranked.length > 0 && (
+          <PaperBot
+            bot={bot}
+            prices={priceMap}
+            topSymbols={topSymbols}
+            onStart={startBot}
+            onToggle={toggleBot}
+            onRebalance={rebalanceBotNow}
+            onReset={resetBot}
+          />
+        )}
 
         <UniverseTable
           ranked={ranked}

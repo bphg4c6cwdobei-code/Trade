@@ -71,6 +71,19 @@ jsDelivr fallback) and hides silently if all mirrors fail.
   σ floored at 0.01) is a model band, **not a forecast** — real tails are
   fatter.
 
+## Paper trading bot
+
+There is **no such thing as a bot that "makes money with no fail"** — anyone
+selling one is lying. What the app ships instead is an honest measuring
+device: a paper trading bot (`src/lib/paperbot.js`) that equal-weights the
+current Top-5 composite signal with $10,000 of simulated cash, pays 0.1 % per
+trade, auto-rebalances when the Top 5 changes (rate-limited to once a minute),
+and marks itself to market against buy-and-hold BTC/SPY. It reports returns,
+max drawdown, fees and every trade exactly as they happen — losses included —
+and its results still flatter reality (no slippage, no spreads, instant
+fills). One independent bot per quadrant, persisted in localStorage; disabled
+in snapshot mode because static prices can't be traded meaningfully.
+
 ## Persistence
 
 API key, symbols, custom relay, GitHub feed URL, equity mode and per-quadrant
