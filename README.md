@@ -82,3 +82,11 @@ everything. Switching equity modes or quadrants aborts in-flight fetches.
 `.github/workflows/pages.yml` builds `dist/` and deploys it to GitHub Pages on
 every push to `main` (enable *Settings → Pages → Source: GitHub Actions*). The
 Vite base is `./`, so the build works from any subpath.
+
+## XRP Trigger Desk
+
+`public/xrp-desk/index.html` is a standalone page (no build step) served at
+`/xrp-desk/` on GitHub Pages. It streams Binance COIN-M `XRPUSD_PERP` trades and
+closed 1H/15m candles, computes the 1H Supertrend (10,3), and evaluates the four
+long/short setups live. Position details are typed in on the device and kept in
+that browser only.
